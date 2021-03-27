@@ -81,6 +81,8 @@ flags.DEFINE_integer(
 
 flags.DEFINE_bool("do_train", False, "Whether to run training.")
 
+flags.DEFINE_bool("do_export", False, "Whether to run training.")
+
 flags.DEFINE_bool("do_predict", False, "Whether to run eval on the dev set.")
 
 flags.DEFINE_integer("train_batch_size", 32, "Total batch size for training.")
@@ -152,6 +154,26 @@ flags.DEFINE_bool(
 flags.DEFINE_float(
     "null_score_diff_threshold", 0.0,
     "If null_score - best_non_null is greater than the threshold predict null.")
+
+
+def serving_input_fn():
+  label_ids = tf.placeholder(tf.int32, [None], name='label_ids')
+  input_ids = tf.placeholder(tf.int32, [None, FLAGS.max_seq_length], name='input_ids')
+  attention_mask = tf.placeholder(tf.int32, [None, FLAGS.max_seq_length], name='attention_mask')
+  input_mask = tf.placeholder(tf.int32, [None, FLAGS.max_seq_length], name='input_mask')
+  segment_ids = tf.placeholder(tf.int32, [None, FLAGS.max_seq_length], name='segment_ids')
+  token_type_ids = tf.placeholder(tf.int32, [None, FLAGS.max_seq_length], name='token_type_ids')
+  unique_ids = tf.placeholder(tf.int64, [None], name='unique_ids')
+
+  input_fn = tf.estimator.export.build_raw_serving_input_receiver_fn({
+      'input_ids': input_ids,
+      'input_mask': input_mask,
+      'attention_mask': attention_mask,
+      'unique_ids': unique_ids,
+      'segment_ids': segment_ids,
+      'token_type_ids': token_type_ids,
+  })()
+  return input_fn
 
 
 class SquadExample(object):
@@ -1099,7 +1121,7 @@ def validate_flags_or_throw(bert_config):
   tokenization.validate_case_matches_checkpoint(FLAGS.do_lower_case,
                                                 FLAGS.init_checkpoint)
 
-  if not FLAGS.do_train and not FLAGS.do_predict:
+  if not FLAGS.do_train and not FLAGS.do_predict and not FLAGS.do_export:
     raise ValueError("At least one of `do_train` or `do_predict` must be True.")
 
   if FLAGS.do_train:
@@ -1275,6 +1297,9 @@ def main(_):
                       FLAGS.do_lower_case, output_prediction_file,
                       output_nbest_file, output_null_log_odds_file)
 
+  if FLAGS.do_export:
+    estimator._export_to_tpu = False
+    estimator.export_savedmodel(FLAGS.output_dir, serving_input_fn)
 
 if __name__ == "__main__":
   flags.mark_flag_as_required("vocab_file")
